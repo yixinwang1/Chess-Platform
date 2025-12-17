@@ -2,7 +2,6 @@
 package com.chessplatform.util;
 
 import com.chessplatform.memento.GameMemento;
-
 import java.io.*;
 
 public class FileUtil {

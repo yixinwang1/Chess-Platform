@@ -1,9 +1,11 @@
-// core/Game.java
+// 修改 core/Game.java
 package com.chessplatform.core;
 
-import com.chessplatform.memento.GameMemento;
 import com.chessplatform.model.Board;
 import com.chessplatform.model.Player;
+import com.chessplatform.memento.GameMemento;
+import com.chessplatform.recorder.GameRecorder;  // 新增导入
+
 import java.io.Serializable;
 
 public interface Game extends Serializable {
@@ -28,4 +30,17 @@ public interface Game extends Serializable {
     // 游戏信息
     String getGameStatus();
     int getMoveCount();
+    
+    // 新增：录像相关方法
+    GameRecorder getGameRecorder();
+    void setGameRecorder(GameRecorder recorder);
+    void recordMove(int row, int col);
+    void recordPass();
+    void recordResign(Player player);
+    
+    // 新增：回放相关方法
+    boolean isReplayMode();
+    void setReplayMode(boolean replayMode);
+    void setReplayStep(int step);
+    Board getBoardAtStep(int step);
 }

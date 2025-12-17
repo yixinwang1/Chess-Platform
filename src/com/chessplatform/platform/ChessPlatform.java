@@ -1,5 +1,5 @@
 // ChessPlatform.java
-package com.chessplatform;
+package com.chessplatform.platform;
 
 import com.chessplatform.ui.ConsoleUI;
 

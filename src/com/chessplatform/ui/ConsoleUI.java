@@ -8,9 +8,14 @@ import com.chessplatform.core.Observer;
 import com.chessplatform.games.GameFactory;
 import com.chessplatform.games.reversi.Reversi;
 import com.chessplatform.memento.GameCaretaker;
+import com.chessplatform.memento.GameMemento;
 import com.chessplatform.model.Board;
+import com.chessplatform.model.Move;
 import com.chessplatform.model.Piece;
 import com.chessplatform.model.Point;
+import com.chessplatform.platform.ChessPlatformWithReplay;
+import com.chessplatform.recorder.GameRecorder;
+import com.chessplatform.recorder.ReplayController;
 import com.chessplatform.util.FileUtil;
 import com.chessplatform.util.ValidationUtil;
 import java.util.*;
@@ -21,12 +26,16 @@ public class ConsoleUI implements Observer {
     private boolean showHelp;
     private Scanner scanner;
     private boolean running;
+    private ChessPlatformWithReplay replayPlatform;  // 新增
+    private boolean isReplayMode;
     
     public ConsoleUI() {
         this.caretaker = new GameCaretaker();
         this.showHelp = true;
         this.scanner = new Scanner(System.in);
         this.running = true;
+        this.replayPlatform = new ChessPlatformWithReplay();
+        this.isReplayMode = false;
     }
     
     public void start() {
@@ -60,6 +69,12 @@ public class ConsoleUI implements Observer {
     private void processInput(String input) {
         String[] parts = input.split("\\s+");
         String command = parts[0].toLowerCase();
+        
+        if (isReplayMode) {
+            // 回放模式下的特殊命令
+            processReplayCommand(command, parts);
+            return;
+        }
         
         switch (command) {
             case "start":
@@ -102,6 +117,12 @@ public class ConsoleUI implements Observer {
                 break;
             case "exit":
                 running = false;
+                break;
+            case "replay":        // 新增
+                handleReplayCommand(parts);
+                break;
+            case "showhistory":   // 新增
+                handleShowHistoryCommand();
                 break;
             default:
                 System.out.println("未知命令: " + command);
@@ -159,9 +180,10 @@ public class ConsoleUI implements Observer {
     public void update(Game game) {
         displayBoard(game);
         
-        // 如果是黑白棋，显示合法落子位置
-        if (game.getGameType() == GameType.REVERSI) {
-            displayValidMoves(game);
+        if (isReplayMode) {
+            displayReplayInfo();
+        } else {
+            displayGameStatus(game);
         }
         
         displayGameStatus();
@@ -250,6 +272,11 @@ public class ConsoleUI implements Observer {
             System.out.print(String.format("%2d ", j));
         }
         System.out.println("\n");
+        
+        // 如果是回放模式，显示回放标记
+        if (isReplayMode) {
+            System.out.println("【回放模式】");
+        }
     }
     
     private void handleMoveCommand(String[] parts) {
@@ -445,6 +472,25 @@ public class ConsoleUI implements Observer {
         System.out.println("游戏状态: " + currentGame.getGameStatus());
         System.out.println("================\n");
     }
+
+    private void displayGameStatus(Game game) {
+        if (game == null) {
+            System.out.println("没有进行中的游戏");
+            return;
+        }
+        
+        if (isReplayMode) {
+            System.out.println("回放中... 输入 'help' 查看回放命令");
+        } else {
+            // 原有状态显示代码...
+            System.out.println("游戏状态: " + game.getGameStatus());
+            
+            // 如果游戏结束，显示是否保存录像
+            if (game.isGameOver() && game.getGameRecorder() != null) {
+                System.out.println("本局游戏已录像，可使用 'showhistory' 查看");
+            }
+        }
+    }
     
     private void listSaveFiles() {
         String[] files = FileUtil.listSaveFiles();
@@ -461,7 +507,9 @@ public class ConsoleUI implements Observer {
     }
     
     private void displayPrompt() {
-        if (currentGame == null) {
+        if (isReplayMode) {
+            System.out.print("回放> ");
+        } else if (currentGame == null) {
             System.out.print("平台> ");
         } else {
             System.out.print(currentGame.getCurrentPlayer().getName() + "> ");
@@ -484,10 +532,19 @@ public class ConsoleUI implements Observer {
             "║   undo                 - 悔棋                          ║\n" +
             "║   resign               - 认输                          ║\n" +
             "║                                                        ║\n" +
-            "║ 存档管理:                                              ║\n" +
-            "║   save [filename]      - 保存游戏                      ║\n" +
-            "║   load [filename]      - 加载游戏                      ║\n" +
+            "║ 录像与存档管理:                                        ║\n" +
+            "║   save [filename]      - 保存游戏(包含录像)            ║\n" +
+            "║   load [filename]      - 加载游戏(包含录像)            ║\n" +
             "║   list                 - 列出所有存档                  ║\n" +
+            "║   showhistory          - 显示当前游戏的历史记录        ║\n" +
+            "║   replay [filename]    - 回放指定存档                  ║\n" +
+            "║                                                        ║\n" +
+            "║ 回放模式命令(进入回放模式后可用):                      ║\n" +
+            "║   next                 - 播放下一步                    ║\n" +
+            "║   prev                 - 回到上一步                    ║\n" +
+            "║   goto [n]             - 跳转到第n步                   ║\n" +
+            "║   info                 - 显示回放信息                  ║\n" +
+            "║   stop                 - 停止回放                      ║\n" +
             "║                                                        ║\n" +
             "║ 系统命令:                                              ║\n" +
             "║   help                 - 显示帮助                      ║\n" +
@@ -503,5 +560,198 @@ public class ConsoleUI implements Observer {
             "║                    版本 2.0.0                          ║\n" +
             "║        支持五子棋、围棋、黑白棋对战                   ║\n" +
             "╚════════════════════════════════════════════════════════╝\n");
+    }
+    
+    // 新增：处理回放命令
+    private void handleReplayCommand(String[] parts) {
+        if (parts.length < 2) {
+            System.out.println("用法: replay [filename]");
+            return;
+        }
+        
+        try {
+            String filename = ValidationUtil.validateFilename(parts[1]);
+            if (!FileUtil.saveFileExists(filename)) {
+                System.out.println("文件不存在: " + filename);
+                return;
+            }
+            
+            // 加载游戏
+            GameMemento loadedState = FileUtil.loadGame(filename);
+            Game game = loadedState.getSavedState();
+            
+            // 应用录像数据
+            if (loadedState.getGameRecorder() != null) {
+                loadedState.applyRecorderToGame(game);
+            }
+            
+            // 开始回放
+            replayPlatform.startReplay(game);
+            isReplayMode = true;
+            currentGame = game;
+            
+            System.out.println("进入回放模式");
+            System.out.println("对局信息: " + game.getGameRecorder().getGameTitle());
+            System.out.println("总步数: " + game.getGameRecorder().getTotalMoves());
+            System.out.println("时长: " + game.getGameRecorder().getDurationInSeconds() + "秒");
+            
+            displayReplayHelp();
+            update(currentGame);
+            
+        } catch (Exception e) {
+            System.out.println("回放失败: " + e.getMessage());
+        }
+    }
+    
+    // 新增：回放模式下的命令处理
+    private void processReplayCommand(String command, String[] parts) {
+        switch (command) {
+            case "next":
+                replayPlatform.replayNext();
+                update(currentGame);
+                break;
+                
+            case "prev":
+            case "previous":
+                replayPlatform.replayPrevious();
+                update(currentGame);
+                break;
+                
+            case "goto":
+                if (parts.length >= 2) {
+                    try {
+                        int step = Integer.parseInt(parts[1]);
+                        replayPlatform.replayGoTo(step);
+                        update(currentGame);
+                    } catch (NumberFormatException e) {
+                        System.out.println("无效的步数: " + parts[1]);
+                    }
+                }
+                break;
+                
+            case "play":
+                replayPlatform.replayPlay();
+                System.out.println("开始自动播放");
+                break;
+                
+            case "pause":
+                replayPlatform.replayPause();
+                System.out.println("暂停播放");
+                break;
+                
+            case "stop":
+                replayPlatform.stopReplay();
+                isReplayMode = false;
+                currentGame = null;
+                System.out.println("退出回放模式");
+                break;
+                
+            case "info":
+                displayReplayInfo();
+                break;
+                
+            case "speed":
+                if (parts.length >= 2) {
+                    try {
+                        int speed = Integer.parseInt(parts[1]);
+                        ReplayController controller = replayPlatform.getReplayController();
+                        if (controller != null) {
+                            controller.setPlaybackSpeed(speed);
+                            System.out.println("播放速度设置为: " + speed + "ms/步");
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("无效的速度值");
+                    }
+                }
+                break;
+                
+            case "help":
+                displayReplayHelp();
+                break;
+                
+            case "exit":
+                replayPlatform.stopReplay();
+                isReplayMode = false;
+                System.out.println("退出回放模式");
+                break;
+                
+            default:
+                System.out.println("回放模式下未知命令，输入 'help' 查看回放命令");
+        }
+    }
+    
+    // 新增：显示历史记录
+    private void handleShowHistoryCommand() {
+        if (currentGame == null || currentGame.getGameRecorder() == null) {
+            System.out.println("当前没有游戏或录像数据");
+            return;
+        }
+        
+        GameRecorder recorder = currentGame.getGameRecorder();
+        System.out.println("\n=== 对局历史记录 ===");
+        System.out.println("总步数: " + recorder.getTotalMoves());
+        System.out.println("开始时间: " + recorder.getStartTime());
+        if (recorder.getEndTime() != null) {
+            System.out.println("结束时间: " + recorder.getEndTime());
+        }
+        System.out.println("时长: " + recorder.getDurationInSeconds() + "秒");
+        
+        // 显示前10步
+        List<Move> moves = recorder.getMoveHistory();
+        int showCount = Math.min(10, moves.size());
+        System.out.println("\n前" + showCount + "步:");
+        for (int i = 0; i < showCount; i++) {
+            System.out.println("  " + moves.get(i));
+        }
+        
+        if (moves.size() > 10) {
+            System.out.println("  ... 还有" + (moves.size() - 10) + "步");
+        }
+        
+        // 显示注解
+        List<String> annotations = recorder.getAnnotations();
+        if (!annotations.isEmpty()) {
+            System.out.println("\n注解:");
+            for (String annotation : annotations) {
+                System.out.println("  " + annotation);
+            }
+        }
+        
+        System.out.println("==================\n");
+    }
+    
+    // 新增：显示回放信息
+    private void displayReplayInfo() {
+        if (replayPlatform.isReplayMode()) {
+            System.out.println(replayPlatform.getReplayInfo());
+            
+            ReplayController controller = replayPlatform.getReplayController();
+            if (controller != null) {
+                Move currentMove = controller.getCurrentMove();
+                if (currentMove != null) {
+                    System.out.println("当前: " + currentMove);
+                }
+                
+                System.out.println("播放速度: " + controller.getPlaybackSpeed() + "ms/步");
+                System.out.println("进度: " + String.format("%.1f%%", 
+                    controller.getProgressPercentage() * 100));
+            }
+        }
+    }
+    
+    // 新增：显示回放帮助
+    private void displayReplayHelp() {
+        System.out.println("\n=== 回放模式命令 ===");
+        System.out.println("next        - 下一步");
+        System.out.println("prev        - 上一步");
+        System.out.println("goto [n]    - 跳转到第n步");
+        System.out.println("play        - 开始自动播放");
+        System.out.println("pause       - 暂停播放");
+        System.out.println("stop        - 停止回放");
+        System.out.println("speed [ms]  - 设置播放速度(毫秒/步)");
+        System.out.println("info        - 显示回放信息");
+        System.out.println("help        - 显示帮助");
+        System.out.println("exit        - 退出回放模式");
+        System.out.println("==================\n");
     }
 }

@@ -54,7 +54,8 @@ cd chess-platform
 javac -d ./bin ./src/com/chessplatform/**/*.java
 
 # 3. 运行程序
-java -cp ./bin com.chessplatform.ChessPlatform
+java -cp ./bin com.chessplatform.platform.ChessPlatform
+java -cp ./bin com.chessplatform.platform.ChessPlatformWithReplay  # 带回放功能的平台
 ```
 
 ## 🎯 使用说明
