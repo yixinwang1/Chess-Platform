@@ -3,7 +3,8 @@ package com.chessplatform.core;
 
 public enum GameType {
     GOMOKU("五子棋"),
-    GO("围棋");
+    GO("围棋"),
+    REVERSI("黑白棋");  // 新增
     
     private final String chineseName;
     

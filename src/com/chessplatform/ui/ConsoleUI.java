@@ -1,19 +1,19 @@
 // ui/ConsoleUI.java
 package com.chessplatform.ui;
 
+import com.chessplatform.command.*;
 import com.chessplatform.core.Game;
 import com.chessplatform.core.GameType;
 import com.chessplatform.core.Observer;
 import com.chessplatform.games.GameFactory;
+import com.chessplatform.games.reversi.Reversi;
+import com.chessplatform.memento.GameCaretaker;
 import com.chessplatform.model.Board;
 import com.chessplatform.model.Piece;
-import com.chessplatform.model.PieceColor;
-import com.chessplatform.command.*;
-import com.chessplatform.memento.GameCaretaker;
+import com.chessplatform.model.Point;
 import com.chessplatform.util.FileUtil;
 import com.chessplatform.util.ValidationUtil;
-
-import java.util.Scanner;
+import java.util.*;
 
 public class ConsoleUI implements Observer {
     private Game currentGame;
@@ -111,8 +111,8 @@ public class ConsoleUI implements Observer {
     
     private void handleStartCommand(String[] parts) {
         if (!ValidationUtil.isValidStartCommand(parts)) {
-            System.out.println("用法: start [gomoku|go] [size]");
-            System.out.println("size: 棋盘大小(8-19)");
+            System.out.println("用法: start [gomoku|go|reversi] [size]");
+            System.out.println("size: 棋盘大小(8-19)，黑白棋固定8×8");
             return;
         }
         
@@ -120,15 +120,21 @@ public class ConsoleUI implements Observer {
             GameType gameType = GameType.fromString(parts[1]);
             int size = Integer.parseInt(parts[2]);
             
+            // 黑白棋特殊处理
+            if (gameType == GameType.REVERSI) {
+                size = 8;  // 强制设置为8×8
+                System.out.println("黑白棋固定使用8×8棋盘");
+            }
+            
             currentGame = GameFactory.createGame(gameType, size);
             caretaker.clear();
             
             System.out.println("开始新游戏: " + gameType.getChineseName() + 
-                             " " + size + "x" + size);
+                            " " + size + "x" + size);
             
-            // 注册观察者
-            if (currentGame instanceof com.chessplatform.core.Subject) {
-                ((com.chessplatform.core.Subject) currentGame).addObserver(this);
+            // 如果是黑白棋，显示初始提示
+            if (gameType == GameType.REVERSI) {
+                displayReversiHint();
             }
             
             update(currentGame);
@@ -136,6 +142,114 @@ public class ConsoleUI implements Observer {
         } catch (IllegalArgumentException e) {
             System.out.println("错误: " + e.getMessage());
         }
+    }
+
+    // 添加黑白棋提示方法
+    private void displayReversiHint() {
+        System.out.println("\n=== 黑白棋规则提示 ===");
+        System.out.println("1. 必须下在可以夹住对方棋子的位置");
+        System.out.println("2. 被夹住的棋子会翻转为己方颜色");
+        System.out.println("3. 当双方都无法落子时游戏结束");
+        System.out.println("4. 棋子多的一方获胜");
+        System.out.println("==================\n");
+    }
+
+    // 修改棋盘显示，为黑白棋添加特殊标记
+    @Override
+    public void update(Game game) {
+        displayBoard(game);
+        
+        // 如果是黑白棋，显示合法落子位置
+        if (game.getGameType() == GameType.REVERSI) {
+            displayValidMoves(game);
+        }
+        
+        displayGameStatus();
+    }
+
+    // 显示黑白棋的合法落子位置
+    private void displayValidMoves(Game game) {
+        if (game instanceof Reversi) {
+            Reversi reversi = (Reversi) game;
+            List<Point> validMoves = reversi.getValidMoves();
+            
+            if (!validMoves.isEmpty()) {
+                System.out.print("合法落子位置: ");
+                for (int i = 0; i < Math.min(validMoves.size(), 10); i++) {
+                    Point p = validMoves.get(i);
+                    System.out.print("(" + p.getX() + "," + p.getY() + ") ");
+                }
+                if (validMoves.size() > 10) {
+                    System.out.print("... 等" + validMoves.size() + "个位置");
+                }
+                System.out.println();
+            }
+        }
+    }
+
+    // 修改棋盘显示，为合法落子位置添加标记
+    private void displayBoard(Game game) {
+        if (game == null) return;
+        
+        Board board = game.getBoard();
+        int size = board.getSize();
+        
+        // 判断是否为黑白棋
+        boolean isReversi = game.getGameType() == GameType.REVERSI;
+        Set<String> validMovePositions = new HashSet<>();
+        
+        if (isReversi && game instanceof Reversi) {
+            Reversi reversi = (Reversi) game;
+            for (Point p : reversi.getValidMoves()) {
+                validMovePositions.add(p.getX() + "," + p.getY());
+            }
+        }
+        
+        System.out.println("\n当前棋盘:");
+        
+        // 打印列标号
+        System.out.print("   ");
+        for (int j = 0; j < size; j++) {
+            System.out.print(String.format("%2d ", j));
+        }
+        System.out.println();
+        
+        // 打印分隔线
+        System.out.print("  +");
+        for (int j = 0; j < size; j++) {
+            System.out.print("---");
+        }
+        System.out.println("+");
+        
+        // 打印棋盘内容
+        for (int i = 0; i < size; i++) {
+            System.out.print(String.format("%2d| ", i));
+            for (int j = 0; j < size; j++) {
+                Piece piece = board.getPiece(i, j);
+                
+                if (isReversi && validMovePositions.contains(i + "," + j) && piece.isEmpty()) {
+                    // 标记合法落子位置
+                    System.out.print("*  ");
+                } else {
+                    System.out.print(piece + "  ");
+                }
+            }
+            System.out.println("|" + i);
+        }
+        
+        // 打印分隔线
+        System.out.print("  +");
+        for (int j = 0; j < size; j++) {
+            System.out.print("---");
+        }
+        System.out.println("+");
+        
+        // 打印列标号
+        System.out.print("   ");
+        for (int j = 0; j < size; j++) {
+            System.out.print(String.format("%2d ", j));
+        }
+        System.out.println("\n");
     }
     
     private void handleMoveCommand(String[] parts) {
@@ -346,59 +460,6 @@ public class ConsoleUI implements Observer {
         System.out.println("===============\n");
     }
     
-    @Override
-    public void update(Game game) {
-        displayBoard(game);
-        displayGameStatus();
-    }
-    
-    private void displayBoard(Game game) {
-        if (game == null) return;
-        
-        Board board = game.getBoard();
-        int size = board.getSize();
-        
-        System.out.println("\n当前棋盘:");
-        
-        // 打印列标号
-        System.out.print("   ");
-        for (int j = 0; j < size; j++) {
-            System.out.print(String.format("%2d ", j));
-        }
-        System.out.println();
-        
-        // 打印分隔线
-        System.out.print("  +");
-        for (int j = 0; j < size; j++) {
-            System.out.print("---");
-        }
-        System.out.println("+");
-        
-        // 打印棋盘内容
-        for (int i = 0; i < size; i++) {
-            System.out.print(String.format("%2d| ", i));
-            for (int j = 0; j < size; j++) {
-                Piece piece = board.getPiece(i, j);
-                System.out.print(piece + "  ");
-            }
-            System.out.println("|" + i);
-        }
-        
-        // 打印分隔线
-        System.out.print("  +");
-        for (int j = 0; j < size; j++) {
-            System.out.print("---");
-        }
-        System.out.println("+");
-        
-        // 打印列标号
-        System.out.print("   ");
-        for (int j = 0; j < size; j++) {
-            System.out.print(String.format("%2d ", j));
-        }
-        System.out.println("\n");
-    }
-    
     private void displayPrompt() {
         if (currentGame == null) {
             System.out.print("平台> ");
@@ -413,13 +474,13 @@ public class ConsoleUI implements Observer {
             "║                    可用命令列表                        ║\n" +
             "╠════════════════════════════════════════════════════════╣\n" +
             "║ 游戏控制:                                              ║\n" +
-            "║   start [gomoku|go] [size] - 开始新游戏(size: 8-19)    ║\n" +
+            "║   start [gomoku|go|reversi] [size] - 开始新游戏        ║\n" +
             "║   restart              - 重新开始当前游戏              ║\n" +
             "║   exit                 - 退出程序                      ║\n" +
             "║                                                        ║\n" +
             "║ 游戏操作:                                              ║\n" +
             "║   move [row] [col]     - 在指定位置落子                ║\n" +
-            "║   pass                 - 虚着(仅围棋)                  ║\n" +
+            "║   pass                 - 虚着(围棋/黑白棋)             ║\n" +
             "║   undo                 - 悔棋                          ║\n" +
             "║   resign               - 认输                          ║\n" +
             "║                                                        ║\n" +
@@ -439,8 +500,8 @@ public class ConsoleUI implements Observer {
         System.out.println("\n" +
             "╔════════════════════════════════════════════════════════╗\n" +
             "║                欢迎使用棋类对战平台                    ║\n" +
-            "║                    版本 1.0.0                          ║\n" +
-            "║        支持五子棋(Gomoku)和围棋(Go)对战               ║\n" +
+            "║                    版本 2.0.0                          ║\n" +
+            "║        支持五子棋、围棋、黑白棋对战                   ║\n" +
             "╚════════════════════════════════════════════════════════╝\n");
     }
 }

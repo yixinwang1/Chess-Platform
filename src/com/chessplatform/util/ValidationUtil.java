@@ -28,9 +28,17 @@ public class ValidationUtil {
             String gameType = parts[1].toUpperCase();
             int size = Integer.parseInt(parts[2]);
             
-            if (!gameType.equals("GOMOKU") && !gameType.equals("GO")) {
+            // 添加黑白棋支持
+            if (!gameType.equals("GOMOKU") && !gameType.equals("GO") && 
+                !gameType.equals("REVERSI")) {
                 return false;
             }
+            
+            // 黑白棋固定8×8，但允许用户输入8
+            if (gameType.equals("REVERSI")) {
+                return size == 8;
+            }
+            
             return isValidBoardSize(size);
         } catch (NumberFormatException e) {
             return false;
