@@ -4,11 +4,11 @@ package com.chessplatform.games.reversi;
 import com.chessplatform.core.*;
 import com.chessplatform.memento.GameMemento;
 import com.chessplatform.model.*;
-import com.chessplatform.recorder.GameRecorder;
+import com.chessplatform.record.GameRecorder;
 import java.io.Serializable;
 import java.util.*;
 
-public class Reversi implements Game, Serializable {
+public class Reversi extends Subject implements Game, Serializable {
     private static final long serialVersionUID = 1L;
     
     private static final int BOARD_SIZE = 8;
@@ -1122,5 +1122,22 @@ public class Reversi implements Game, Serializable {
         if (gameRecorder != null) {
             gameRecorder.addAnnotation("游戏模式: " + mode.getDescription());
         }
+    }
+    
+    @Override
+    public void setPlayers(Player blackPlayer, Player whitePlayer) {
+        this.blackPlayer = blackPlayer;
+        this.whitePlayer = whitePlayer;
+        this.currentPlayer = blackPlayer;
+    }
+    
+    @Override
+    public Player getBlackPlayer() {
+        return blackPlayer;
+    }
+    
+    @Override
+    public Player getWhitePlayer() {
+        return whitePlayer;
     }
 }

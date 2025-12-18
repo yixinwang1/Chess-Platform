@@ -6,7 +6,7 @@ import com.chessplatform.model.Board;
 import com.chessplatform.model.PieceColor;
 import com.chessplatform.model.Player;  // 新增导入
 import com.chessplatform.model.Point;
-import com.chessplatform.recorder.GameRecorder;
+import com.chessplatform.record.GameRecorder;
 import java.io.Serializable;
 import java.util.List;
 
@@ -59,4 +59,15 @@ public interface Game extends Serializable {
     
     // 新增玩家颜色获取
     PieceColor getPlayerColor(Player player);
+
+    Player getBlackPlayer();
+    Player getWhitePlayer();
+    void setPlayers(Player blackPlayer, Player whitePlayer);
+    
+    // 新增事件相关方法
+    void addEventListener(Class<? extends GameEvent> eventType, GameEventListener listener);
+    void removeEventListener(Class<? extends GameEvent> eventType, GameEventListener listener);
+    
+    // 新增获取EventManager的方法（可选）
+    EventManager getEventManager();
 }

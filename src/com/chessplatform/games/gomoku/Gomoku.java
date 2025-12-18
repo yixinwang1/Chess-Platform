@@ -5,18 +5,15 @@ import com.chessplatform.ai.*;
 import com.chessplatform.ai.mcts.*;
 import com.chessplatform.ai.random.*;
 import com.chessplatform.ai.rules.*;
-import com.chessplatform.core.AIType;
-import com.chessplatform.core.Game;
-import com.chessplatform.core.GameMode;
-import com.chessplatform.core.GameType;
-import com.chessplatform.core.ReplayMode;
+import com.chessplatform.core.*;
+import com.chessplatform.core.events.*;
 import com.chessplatform.memento.GameMemento;
 import com.chessplatform.model.*;
-import com.chessplatform.recorder.GameRecorder;
+import com.chessplatform.record.GameRecorder;
 import java.io.*;
 import java.util.*;
 
-public class Gomoku implements Game, Serializable {
+public class Gomoku extends Subject implements Game, Serializable {
     private static final long serialVersionUID = 1L;
     
     private Board board;
@@ -91,6 +88,9 @@ public class Gomoku implements Game, Serializable {
         board.setPiece(row, col, new Piece(currentPlayer.getColor()));
         Move move = new Move(currentPlayer, row, col);
         moveHistory.push(move);
+
+        // 创建移动事件
+        fireGameEvent(new MoveMadeEvent(this, move));
         
         // 记录到录像
         recordMove(row, col);
@@ -101,6 +101,11 @@ public class Gomoku implements Game, Serializable {
             winner = currentPlayer;
             gameRecorder.recordGameEnd(this);
             gameRecorder.addAnnotation(winner.getName() + " 五子连珠获胜！");
+            
+            winner = currentPlayer;
+
+            // 创建游戏结束事件
+            fireGameEvent(new GameEndedEvent(this, winner, false));
             return true;
         }
         
@@ -110,6 +115,9 @@ public class Gomoku implements Game, Serializable {
             winner = null;
             gameRecorder.recordGameEnd(this);
             gameRecorder.addAnnotation("棋盘已满，平局！");
+
+            // 创建平局事件
+            fireGameEvent(new GameEndedEvent(this, null, true));
             return true;
         }
         
@@ -151,6 +159,9 @@ public class Gomoku implements Game, Serializable {
         gameRecorder.recordGameEnd(this);
         gameRecorder.addAnnotation(player.getName() + " 认输，" + winner.getName() + " 获胜");
         
+        // 创建认输事件
+        fireGameEvent(new PlayerResignedEvent(this, player));
+
         return true;
     }
     
@@ -535,5 +546,25 @@ public class Gomoku implements Game, Serializable {
             return PieceColor.WHITE;
         }
         return PieceColor.EMPTY;
+    }
+    
+    @Override
+    public void setPlayers(Player blackPlayer, Player whitePlayer) {
+        this.blackPlayer = blackPlayer;
+        this.whitePlayer = whitePlayer;
+        this.currentPlayer = blackPlayer;
+        
+        // 创建游戏开始事件
+        fireGameEvent(new GameStartedEvent(this, blackPlayer, whitePlayer));
+    }
+    
+    @Override
+    public Player getBlackPlayer() {
+        return blackPlayer;
+    }
+    
+    @Override
+    public Player getWhitePlayer() {
+        return whitePlayer;
     }
 }

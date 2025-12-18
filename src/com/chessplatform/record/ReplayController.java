@@ -1,4 +1,4 @@
-package com.chessplatform.recorder;
+package com.chessplatform.record;
 
 import com.chessplatform.model.Board;
 import com.chessplatform.model.Move;

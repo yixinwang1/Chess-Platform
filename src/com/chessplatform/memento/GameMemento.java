@@ -2,7 +2,7 @@
 package com.chessplatform.memento;
 
 import com.chessplatform.core.Game;
-import com.chessplatform.recorder.GameRecorder;  // 新增导入
+import com.chessplatform.record.GameRecorder;  // 新增导入
 
 import java.io.*;
 

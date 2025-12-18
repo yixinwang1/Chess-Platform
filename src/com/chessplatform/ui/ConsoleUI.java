@@ -1,8 +1,10 @@
 // ui/ConsoleUI.java
 package com.chessplatform.ui;
 
+import com.chessplatform.auth.*;
 import com.chessplatform.command.*;
 import com.chessplatform.core.*;
+import com.chessplatform.core.events.*;
 import com.chessplatform.games.GameFactory;
 import com.chessplatform.games.gomoku.Gomoku;
 import com.chessplatform.games.reversi.Reversi;
@@ -10,14 +12,14 @@ import com.chessplatform.memento.GameCaretaker;
 import com.chessplatform.memento.GameMemento;
 import com.chessplatform.model.*;
 import com.chessplatform.platform.ChessPlatformWithReplay;
-import com.chessplatform.recorder.GameRecorder;
-import com.chessplatform.recorder.ReplayController;
+import com.chessplatform.record.*;
+import com.chessplatform.stats.StatsManager;
 import com.chessplatform.util.FileUtil;
 import com.chessplatform.util.ValidationUtil;
 import java.util.*;
 import javax.swing.SwingUtilities;
 
-public class ConsoleUI implements com.chessplatform.core.Observer {
+public class ConsoleUI implements com.chessplatform.core.Observer, GameEventListener {
     private Game currentGame;
     private GameCaretaker caretaker;
     private boolean showHelp;
@@ -28,6 +30,14 @@ public class ConsoleUI implements com.chessplatform.core.Observer {
     // 新增字段
     private boolean waitingForAI;
     private Thread aiThread;
+
+        
+    // 新增：用户和统计管理字段
+    private UserManager userManager;           // 添加这行
+    private AuthenticationService authService;
+    private StatsManager statsManager;
+    private RecordManager recordManager;
+    private boolean isLoginMenu;
     
     public ConsoleUI() {
         this.caretaker = new GameCaretaker();
@@ -37,10 +47,27 @@ public class ConsoleUI implements com.chessplatform.core.Observer {
         this.replayPlatform = new ChessPlatformWithReplay();
         this.isReplayMode = false;
         this.waitingForAI = false;
+        
+        // 初始化用户管理相关组件
+        this.userManager = new UserManager();   // 添加这行
+        this.authService = new AuthenticationService(userManager);
+        this.statsManager = new StatsManager(userManager);
+        this.recordManager = new RecordManager(true);
+        
+        // 可以按需开启/关闭
+        statsManager.setEnabled(true);
+        recordManager.setAutoSaveRecords(true);
     }
     
     public void start() {
         displayWelcome();
+        
+        // 登录/注册菜单
+        while (isLoginMenu && running) {
+            displayLoginMenu();
+            String choice = scanner.nextLine().trim();
+            handleLoginMenu(choice);
+        }
         
         while (running) {
             try {
@@ -137,6 +164,34 @@ public class ConsoleUI implements com.chessplatform.core.Observer {
             case "showhistory":   // 新增
                 handleShowHistoryCommand();
                 break;
+            // 新增的用户管理命令
+            case "login":
+                handleLoginCommand(parts);
+                break;
+            case "logout":
+                handleLogoutCommand();
+                break;
+            case "register":
+                handleRegisterCommand(parts);
+                break;
+            case "profile":
+                handleProfileCommand(parts);
+                break;
+            case "records":
+                handleRecordsCommand(parts);
+                break;
+            case "leaderboard":
+                displayLeaderboard();
+                break;
+            case "stats":
+                handleStatsCommand(parts);
+                break;
+            case "record":
+                handleRecordCommand(parts);
+                break;
+            case "config":
+                handleConfigCommand();
+                break;
             default:
                 System.out.println("未知命令: " + command);
                 System.out.println("请输入 'help' 查看可用命令");
@@ -170,6 +225,21 @@ public class ConsoleUI implements com.chessplatform.core.Observer {
             
             // 创建游戏
             currentGame = GameFactory.createGame(gameType, size);
+            caretaker.clear();
+            
+            // 设置玩家
+            User currentUser = authService.getCurrentUser();
+            // System.out.print("请输入对手用户名(输入 'ai' 对战AI，'guest' 对战游客): ");
+            System.out.print("请输入对手用户名");
+            String opponentName = scanner.nextLine().trim();
+            
+            Player player1 = createPlayer(currentUser, PieceColor.BLACK);
+            Player player2 = createOpponent(opponentName, PieceColor.WHITE);
+            
+            currentGame.setPlayers(player1, player2);
+            
+            // 注册事件监听器
+            registerEventListeners(currentGame);
             
             // 设置游戏模式
             if (currentGame instanceof Gomoku) {
@@ -189,6 +259,10 @@ public class ConsoleUI implements com.chessplatform.core.Observer {
                 System.out.println("白方AI: " + whiteAI.getDescription());
             }
             
+            // 注册观察者
+            if (currentGame instanceof com.chessplatform.core.Subject) {
+                ((com.chessplatform.core.Subject) currentGame).addObserver(this);
+            }
             update(currentGame);
             
             // 如果黑方是AI，自动开始思考
@@ -823,49 +897,35 @@ public class ConsoleUI implements com.chessplatform.core.Observer {
             "╔════════════════════════════════════════════════════════╗\n" +
             "║                    可用命令列表                        ║\n" +
             "╠════════════════════════════════════════════════════════╣\n" +
+            "║ 用户管理:                                              ║\n" +
+            "║   login [user] [pass]  - 登录账户                     ║\n" +
+            "║   logout               - 登出账户                     ║\n" +
+            "║   register [u] [p] [cp]- 注册新账户                   ║\n" +
+            "║   profile [username]   - 查看用户资料                 ║\n" +
+            "║   records [username]   - 查看用户录像                 ║\n" +
+            "║   leaderboard          - 查看排行榜                   ║\n" +
+            "║                                                        ║\n" +
             "║ 游戏控制:                                              ║\n" +
-            "║   start [game] [size] [mode] [blackAI] [whiteAI]       ║\n" +
-            "║     game: gomoku, go, reversi                          ║\n" +
-            "║     mode: pvp(玩家对战), pva(人机对战), ava(AI对战)   ║\n" +
-            "║     AI: none, random, rule, mcts                       ║\n" +
-            "║   示例: start gomoku 15 pva random none                ║\n" +
-            "║   restart              - 重新开始当前游戏              ║\n" +
-            "║   exit                 - 退出程序                      ║\n" +
+            "║   start [type] [size]  - 开始新游戏(size: 8-19)       ║\n" +
+            "║   move [row] [col]     - 在指定位置落子               ║\n" +
+            "║   pass                 - 虚着(仅围棋)                 ║\n" +
+            "║   undo                 - 悔棋                         ║\n" +
+            "║   resign               - 认输                         ║\n" +
+            "║   restart              - 重新开始当前游戏             ║\n" +
+            "║   status               - 显示游戏状态                 ║\n" +
             "║                                                        ║\n" +
-            "║ AI对战控制:                                            ║\n" +
-            "║   ai [player] [type]   - 设置玩家AI类型               ║\n" +
-            "║     player: black, white                               ║\n" +
-            "║     type: none, random, rule, mcts                     ║\n" +
-            "║   示例: ai black rule    # 设置黑方为规则AI           ║\n" +
-            "║   aimode [mode]        - 设置游戏模式                 ║\n" +
-            "║     mode: pvp, pva, ava                               ║\n" +
-            "║   aistep               - AI走下一步                   ║\n" +
-            "║   aiauto [delay]       - AI自动对战                  ║\n" +
+            "║ 存档管理:                                              ║\n" +
+            "║   save [filename]      - 保存游戏                     ║\n" +
+            "║   load [filename]      - 加载游戏                     ║\n" +
+            "║   list                 - 列出所有存档                 ║\n" +
             "║                                                        ║\n" +
-            "║ 游戏操作:                                              ║\n" +
-            "║   move [row] [col]     - 在指定位置落子                ║\n" +
-            "║   pass                 - 虚着(围棋/黑白棋)             ║\n" +
-            "║   undo                 - 悔棋                          ║\n" +
-            "║   resign               - 认输                          ║\n" +
-            "║                                                        ║\n" +
-            "║ 录像与存档管理:                                        ║\n" +
-            "║   save [filename]      - 保存游戏(包含录像)            ║\n" +
-            "║   load [filename]      - 加载游戏(包含录像)            ║\n" +
-            "║   list                 - 列出所有存档                  ║\n" +
-            "║   showhistory          - 显示当前游戏的历史记录        ║\n" +
-            "║   replay [filename]    - 回放指定存档                  ║\n" +
-            "║                                                        ║\n" +
-            "║ 回放模式命令(进入回放模式后可用):                      ║\n" +
-            "║   next                 - 播放下一步                    ║\n" +
-            "║   prev                 - 回到上一步                    ║\n" +
-            "║   goto [n]             - 跳转到第n步                   ║\n" +
-            "║   info                 - 显示回放信息                  ║\n" +
-            "║   stop                 - 停止回放                      ║\n" +
-            "║                                                        ║\n" +
-            "║ 系统命令:                                              ║\n" +
-            "║   help                 - 显示帮助                      ║\n" +
-            "║   hidehelp             - 隐藏帮助                      ║\n" +
-            "║   status               - 显示游戏状态                  ║\n" +
+            "║ 系统设置:                                              ║\n" +
+            "║   stats [on|off]       - 开启/关闭战绩统计           ║\n" +
+            "║   record [on|off]      - 开启/关闭自动保存录像       ║\n" +
+            "║   config               - 查看系统配置                ║\n" +
+            "║   help                 - 显示帮助                    ║\n" +
+            "║   hidehelp             - 隐藏帮助                    ║\n" +
+            "║   exit                 - 退出程序                    ║\n" +
             "╚════════════════════════════════════════════════════════╝\n");
         showHelp = false;
     }
@@ -1070,5 +1130,307 @@ public class ConsoleUI implements com.chessplatform.core.Observer {
         System.out.println("help        - 显示帮助");
         System.out.println("exit        - 退出回放模式");
         System.out.println("==================\n");
+    }
+    
+    private void registerEventListeners(com.chessplatform.core.Game game) {
+        // 注册战绩管理器
+        game.addEventListener(GameEndedEvent.class, statsManager);
+        game.addEventListener(PlayerResignedEvent.class, statsManager);
+        
+        // 注册录像管理器
+        game.addEventListener(GameEndedEvent.class, recordManager);
+        game.addEventListener(PlayerResignedEvent.class, recordManager);
+        
+        // UI 自己监听某些事件
+        game.addEventListener(GameEndedEvent.class, this);
+        game.addEventListener(PlayerResignedEvent.class, this);
+        game.addEventListener(GameStartedEvent.class, this);
+    }
+    
+    @Override
+    public void onGameEvent(GameEvent event) {
+        // UI 对事件的响应
+        if (event instanceof GameEndedEvent) {
+            GameEndedEvent gameEnded = (GameEndedEvent) event;
+            displayGameResult(gameEnded);
+        } else if (event instanceof PlayerResignedEvent) {
+            PlayerResignedEvent resignEvent = (PlayerResignedEvent) event;
+            System.out.println("\n" + resignEvent.getResignedPlayer().getName() + " 认输!");
+            System.out.println(resignEvent.getWinner().getName() + " 获胜!");
+        } else if (event instanceof GameStartedEvent) {
+            GameStartedEvent startEvent = (GameStartedEvent) event;
+            System.out.println("\n游戏开始!");
+            System.out.println("黑方: " + startEvent.getBlackPlayer());
+            System.out.println("白方: " + startEvent.getWhitePlayer());
+        }
+    }
+    
+    private void displayGameResult(GameEndedEvent event) {
+        System.out.println("\n" + "=".repeat(50));
+        System.out.println("游戏结束!");
+        
+        if (event.isDraw()) {
+            System.out.println("平局!");
+            System.out.println("双方战绩已更新");
+        } else if (event.getWinner() != null) {
+            System.out.println("获胜者: " + event.getWinner().getName());
+            System.out.println("战绩已更新");
+        }
+        
+        System.out.println("=".repeat(50));
+    }
+    
+    // 新增控制命令
+    private void handleStatsCommand(String[] parts) {
+        if (parts.length > 1) {
+            switch (parts[1].toLowerCase()) {
+                case "on":
+                    statsManager.setEnabled(true);
+                    System.out.println("战绩统计已开启");
+                    break;
+                case "off":
+                    statsManager.setEnabled(false);
+                    System.out.println("战绩统计已关闭");
+                    break;
+                default:
+                    System.out.println("用法: stats [on|off]");
+            }
+        } else {
+            System.out.println("战绩统计: " + (statsManager.isEnabled() ? "开启" : "关闭"));
+        }
+    }
+    
+    private void handleRecordCommand(String[] parts) {
+        if (parts.length > 1) {
+            switch (parts[1].toLowerCase()) {
+                case "on":
+                    recordManager.setAutoSaveRecords(true);
+                    System.out.println("自动保存录像已开启");
+                    break;
+                case "off":
+                    recordManager.setAutoSaveRecords(false);
+                    System.out.println("自动保存录像已关闭");
+                    break;
+                default:
+                    System.out.println("用法: record [on|off]");
+            }
+        } else {
+            System.out.println("自动保存录像: " + (recordManager.isAutoSaveEnabled() ? "开启" : "关闭"));
+        }
+    }
+    // 显示登录菜单的方法
+    private void displayLoginMenu() {
+        System.out.println("\n" +
+            "╔════════════════════════════════════════════════════════╗\n" +
+            "║                    用户账户管理                        ║\n" +
+            "╠════════════════════════════════════════════════════════╣\n" +
+            "║  1. 登录                                              ║\n" +
+            "║  2. 注册                                              ║\n" +
+            "║  3. 游客继续                                          ║\n" +
+            "║  4. 查看排行榜                                        ║\n" +
+            "║  5. 退出                                              ║\n" +
+            "╚════════════════════════════════════════════════════════╝\n");
+        System.out.print("请选择(1-5): ");
+    }
+    
+    private void handleLoginMenu(String choice) {
+        switch (choice) {
+            case "1":
+                handleLogin();
+                break;
+            case "2":
+                handleRegister();
+                break;
+            case "3":
+                isLoginMenu = false;
+                System.out.println("以游客身份进入游戏...");
+                break;
+            case "4":
+                displayLeaderboard();
+                break;
+            case "5":
+                running = false;
+                isLoginMenu = false;
+                break;
+            default:
+                System.out.println("无效选择，请重新输入");
+        }
+    }
+    
+    private void handleLogin() {
+        System.out.print("用户名: ");
+        String username = scanner.nextLine().trim();
+        System.out.print("密码: ");
+        String password = scanner.nextLine().trim();
+        
+        if (authService.login(username, password)) {
+            System.out.println("登录成功! 欢迎回来，" + username);
+            isLoginMenu = false;
+        } else {
+            System.out.println("登录失败，用户名或密码错误");
+        }
+    }
+    
+    private void handleRegister() {
+        System.out.print("请输入用户名: ");
+        String username = scanner.nextLine().trim();
+        
+        if (userManager.isUsernameTaken(username)) {
+            System.out.println("用户名已存在，请选择其他用户名");
+            return;
+        }
+        
+        System.out.print("请输入密码(至少6位): ");
+        String password = scanner.nextLine().trim();
+        System.out.print("确认密码: ");
+        String confirmPassword = scanner.nextLine().trim();
+        
+        if (authService.register(username, password, confirmPassword)) {
+            System.out.println("注册成功! 请登录");
+        } else {
+            System.out.println("注册失败，请检查输入");
+        }
+    }
+    
+    private void displayLeaderboard() {
+        System.out.println("\n=== 玩家排行榜 ===");
+        java.util.List<User> users = userManager.getAllUsersSortedByWinRate();
+        
+        if (users.isEmpty()) {
+            System.out.println("暂无玩家数据");
+            return;
+        }
+        
+        System.out.println("排名\t用户名\t\t战绩\t\t胜率");
+        System.out.println("------------------------------------------------");
+        for (int i = 0; i < Math.min(10, users.size()); i++) {
+            User user = users.get(i);
+            System.out.printf("%2d\t%-12s\t%d/%d\t\t%.1f%%\n",
+                i + 1,
+                user.getUsername(),
+                user.getStats().getWins(),
+                user.getStats().getTotalGames(),
+                user.getStats().getWinRate());
+        }
+        System.out.println("================================================");
+    }
+    
+    // 新增的命令处理方法
+    private void handleLoginCommand(String[] parts) {
+        if (parts.length != 3) {
+            System.out.println("用法: login [用户名] [密码]");
+            return;
+        }
+        
+        if (authService.login(parts[1], parts[2])) {
+            System.out.println("登录成功! 欢迎，" + parts[1]);
+        } else {
+            System.out.println("登录失败，用户名或密码错误");
+        }
+    }
+    
+    private void handleLogoutCommand() {
+        authService.logout();
+        System.out.println("已登出");
+    }
+    
+    private void handleRegisterCommand(String[] parts) {
+        if (parts.length != 4) {
+            System.out.println("用法: register [用户名] [密码] [确认密码]");
+            return;
+        }
+        
+        if (authService.register(parts[1], parts[2], parts[3])) {
+            System.out.println("注册成功! 请使用 login 命令登录");
+        } else {
+            System.out.println("注册失败，用户名已存在或密码不符合要求");
+        }
+    }
+    
+    private void handleProfileCommand(String[] parts) {
+        if (parts.length == 1) {
+            // 查看当前用户资料
+            User currentUser = authService.getCurrentUser();
+            displayUserProfile(currentUser);
+        } else if (parts.length == 2) {
+            // 查看指定用户资料
+            User user = userManager.getUser(parts[1]);
+            if (user != null) {
+                displayUserProfile(user);
+            } else {
+                System.out.println("用户不存在: " + parts[1]);
+            }
+        } else {
+            System.out.println("用法: profile [用户名]");
+        }
+    }
+    
+    private void displayUserProfile(User user) {
+        System.out.println("\n" +
+            "┌─────────────────────────────────────────────────────┐\n" +
+            "│                    用户档案                         │\n" +
+            "├─────────────────────────────────────────────────────┤");
+        
+        System.out.printf("│ 用户名: %-48s │\n", user.getUsername());
+        System.out.printf("│ 身份: %-51s │\n", 
+            user.isAI() ? "AI玩家" : user.isGuest() ? "游客" : "注册用户");
+        
+        if (user.isRegistered()) {
+            System.out.println("├─────────────────────────────────────────────────────┤");
+            System.out.printf("│ %-56s │\n", user.getStats().getFormattedStats());
+            System.out.println("├─────────────────────────────────────────────────────┤");
+            System.out.printf("│ 总对局: %-48d │\n", user.getStats().getTotalGames());
+            System.out.printf("│ 胜场: %-50d │\n", user.getStats().getWins());
+            System.out.printf("│ 负场: %-50d │\n", user.getStats().getLosses());
+            System.out.printf("│ 平局: %-50d │\n", user.getStats().getDraws());
+            System.out.printf("│ 胜率: %-50.1f%% │\n", user.getStats().getWinRate());
+        }
+        
+        System.out.println("└─────────────────────────────────────────────────────┘\n");
+    }
+    
+    private void handleRecordsCommand(String[] parts) {
+        if (parts.length != 2) {
+            System.out.println("用法: records [用户名]");
+            return;
+        }
+        
+        // 这里需要实现查看用户录像的功能
+        System.out.println("查看录像功能正在开发中...");
+    }
+    
+    private void handleConfigCommand() {
+        System.out.println("\n=== 系统配置 ===");
+        System.out.println("战绩统计: " + (statsManager.isEnabled() ? "开启" : "关闭"));
+        System.out.println("自动保存录像: " + 
+            (recordManager.isAutoSaveEnabled() ? "开启" : "关闭"));
+        System.out.println("保存游客游戏: " + 
+            (recordManager.isSaveGuestGames() ? "是" : "否"));
+        
+        System.out.println("\n配置命令:");
+        System.out.println("  stats [on|off]      - 开关战绩统计");
+        System.out.println("  record [on|off]     - 开关自动录像");
+        System.out.println("  record guest [on|off] - 开关保存游客游戏");
+    }
+
+    private Player createPlayer(User user, PieceColor color) {
+        return new Player(user, color);
+    }
+    
+    private Player createOpponent(String opponentName, PieceColor color) {
+        if (opponentName.equalsIgnoreCase("ai")) {
+            User aiUser = User.createAIUser("AI_" + color.getChineseName());
+            return new Player(aiUser, color);
+        } else if (opponentName.equalsIgnoreCase("guest")) {
+            User guestUser = User.createGuestUser();
+            return new Player(guestUser, color);
+        } else {
+            User opponentUser = userManager.getUser(opponentName);
+            if (opponentUser == null) {
+                System.out.println("用户不存在，将创建为游客");
+                opponentUser = User.createGuestUser();
+            }
+            return new Player(opponentUser, color);
+        }
     }
 }

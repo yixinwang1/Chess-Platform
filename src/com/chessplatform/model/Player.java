@@ -1,21 +1,31 @@
 // model/Player.java
 package com.chessplatform.model;
 
+import com.chessplatform.auth.User;
 import java.io.Serializable;
 
 public class Player implements Serializable {
-    private String name;
+    private User user;
     private PieceColor color;
     private boolean hasResigned;
     
-    public Player(String name, PieceColor color) {
-        this.name = name;
+    public Player(User user, PieceColor color) {
+        this.user = user;
         this.color = color;
         this.hasResigned = false;
     }
     
+    // 兼容旧构造方法
+    public Player(String name, PieceColor color) {
+        this(new com.chessplatform.auth.User(name, ""), color);
+    }
+    
     public String getName() {
-        return name;
+        return user.getUsername();
+    }
+    
+    public User getUser() {
+        return user;
     }
     
     public PieceColor getColor() {
@@ -32,6 +42,8 @@ public class Player implements Serializable {
     
     @Override
     public String toString() {
-        return name + "(" + color.getChineseName() + ")";
+        String stats = user.isRegistered() ? user.getStats().getFormattedStats() : "";
+        return getName() + "(" + color.getChineseName() + ")" + 
+               (stats.isEmpty() ? "" : " " + stats);
     }
 }

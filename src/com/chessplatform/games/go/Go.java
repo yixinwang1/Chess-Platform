@@ -3,14 +3,15 @@ package com.chessplatform.games.go;
 
 
 import com.chessplatform.core.*;
+import com.chessplatform.core.events.*;
 import com.chessplatform.memento.GameMemento;
 import com.chessplatform.model.*;
-import com.chessplatform.recorder.GameRecorder;
+import com.chessplatform.record.GameRecorder;
 import java.io.Serializable;
 import java.util.*;
 
 
-public class Go implements Game, Serializable {
+public class Go extends Subject implements Game, Serializable {
     private static final long serialVersionUID = 1L;
     
     private Board board;
@@ -84,6 +85,8 @@ public class Go implements Game, Serializable {
         board.setPiece(row, col, new Piece(currentPlayer.getColor()));
         Move move = new Move(currentPlayer, row, col);
         moveHistory.push(move);
+        // 创建移动事件
+        fireGameEvent(new MoveMadeEvent(this, move));
         
         // 记录到录像
         recordMove(row, col);
@@ -996,5 +999,22 @@ public class Go implements Game, Serializable {
         if (gameRecorder != null) {
             gameRecorder.addAnnotation("游戏模式: " + mode.getDescription());
         }
+    }
+    
+    @Override
+    public void setPlayers(Player blackPlayer, Player whitePlayer) {
+        this.blackPlayer = blackPlayer;
+        this.whitePlayer = whitePlayer;
+        this.currentPlayer = blackPlayer;
+    }
+    
+    @Override
+    public Player getBlackPlayer() {
+        return blackPlayer;
+    }
+    
+    @Override
+    public Player getWhitePlayer() {
+        return whitePlayer;
     }
 }

@@ -1,7 +1,9 @@
 // model/PieceColor.java
 package com.chessplatform.model;
 
-public enum PieceColor {
+import java.io.Serializable;
+
+public enum PieceColor implements Serializable {
     BLACK("●", "黑"),
     WHITE("○", "白"),
     EMPTY("+", "空");

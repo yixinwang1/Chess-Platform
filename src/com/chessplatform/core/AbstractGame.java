@@ -2,7 +2,7 @@
 package com.chessplatform.core;
 
 import com.chessplatform.model.*;
-import com.chessplatform.recorder.GameRecorder;
+import com.chessplatform.record.GameRecorder;
 import java.io.Serializable;
 
 public abstract class AbstractGame implements Game, Serializable {

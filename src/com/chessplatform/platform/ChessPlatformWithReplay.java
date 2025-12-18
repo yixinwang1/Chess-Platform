@@ -3,7 +3,7 @@ package com.chessplatform.platform;
 
 import com.chessplatform.ui.ConsoleUI;
 import com.chessplatform.core.Game;
-import com.chessplatform.recorder.ReplayController;
+import com.chessplatform.record.ReplayController;
 
 public class ChessPlatformWithReplay {
     private Game currentGame;
