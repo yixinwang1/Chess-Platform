@@ -11,7 +11,7 @@ import com.chessplatform.games.reversi.Reversi;
 import com.chessplatform.memento.GameCaretaker;
 import com.chessplatform.memento.GameMemento;
 import com.chessplatform.model.*;
-import com.chessplatform.platform.ChessPlatformWithReplay;
+import com.chessplatform.platform.ChessPlatform;
 import com.chessplatform.record.*;
 import com.chessplatform.stats.StatsManager;
 import com.chessplatform.util.FileUtil;
@@ -25,7 +25,7 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
     private boolean showHelp;
     private Scanner scanner;
     private boolean running;
-    private ChessPlatformWithReplay replayPlatform;  // 新增
+    private ChessPlatform replayPlatform;  // 新增
     private boolean isReplayMode;
     // 新增字段
     private boolean waitingForAI;
@@ -44,7 +44,7 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
         this.showHelp = true;
         this.scanner = new Scanner(System.in);
         this.running = true;
-        this.replayPlatform = new ChessPlatformWithReplay();
+        this.replayPlatform = new ChessPlatform();
         this.isReplayMode = false;
         this.waitingForAI = false;
         
@@ -898,34 +898,40 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
             "║                    可用命令列表                        ║\n" +
             "╠════════════════════════════════════════════════════════╣\n" +
             "║ 用户管理:                                              ║\n" +
-            "║   login [user] [pass]  - 登录账户                     ║\n" +
-            "║   logout               - 登出账户                     ║\n" +
-            "║   register [u] [p] [cp]- 注册新账户                   ║\n" +
-            "║   profile [username]   - 查看用户资料                 ║\n" +
-            "║   records [username]   - 查看用户录像                 ║\n" +
-            "║   leaderboard          - 查看排行榜                   ║\n" +
+            "║   login [user] [pass]  - 登录账户                      ║\n" +
+            "║   logout               - 登出账户                      ║\n" +
+            "║   register [u] [p] [cp]- 注册新账户                    ║\n" +
+            "║   profile [username]   - 查看用户资料                  ║\n" +
+            "║   records [username]   - 查看用户录像                  ║\n" +
+            "║   leaderboard          - 查看排行榜                    ║\n" +
             "║                                                        ║\n" +
             "║ 游戏控制:                                              ║\n" +
-            "║   start [type] [size]  - 开始新游戏(size: 8-19)       ║\n" +
-            "║   move [row] [col]     - 在指定位置落子               ║\n" +
-            "║   pass                 - 虚着(仅围棋)                 ║\n" +
-            "║   undo                 - 悔棋                         ║\n" +
-            "║   resign               - 认输                         ║\n" +
-            "║   restart              - 重新开始当前游戏             ║\n" +
-            "║   status               - 显示游戏状态                 ║\n" +
+            "║   start [game] [size] [mode] [blackAI] [whiteAI]       ║\n" +
+            "║     game: gomoku, go, reversi                          ║\n" +
+            "║     mode: pvp(玩家对战), pva(人机对战), ava(AI对战)    ║\n" +
+            "║     AI: none, random, rule, mcts                       ║\n" +
+            "║     示例: start gomoku 15 pva random none              ║\n" +
+            "║   restart              - 重新开始                       ║\n" +
+            "║ 游戏操作:                                              ║\n" +
+            "║   move [row] [col]     - 在指定位置落子                ║\n" +
+            "║   pass                 - 虚着(仅围棋)                  ║\n" +
+            "║   undo                 - 悔棋                          ║\n" +
+            "║   resign               - 认输                          ║\n" +
+            "║   restart              - 重新开始当前游戏              ║\n" +
+            "║   status               - 显示游戏状态                  ║\n" +
             "║                                                        ║\n" +
             "║ 存档管理:                                              ║\n" +
-            "║   save [filename]      - 保存游戏                     ║\n" +
-            "║   load [filename]      - 加载游戏                     ║\n" +
-            "║   list                 - 列出所有存档                 ║\n" +
+            "║   save [filename]      - 保存游戏                      ║\n" +
+            "║   load [filename]      - 加载游戏                      ║\n" +
+            "║   list                 - 列出所有存档                  ║\n" +
             "║                                                        ║\n" +
             "║ 系统设置:                                              ║\n" +
-            "║   stats [on|off]       - 开启/关闭战绩统计           ║\n" +
-            "║   record [on|off]      - 开启/关闭自动保存录像       ║\n" +
+            "║   stats [on|off]       - 开启/关闭战绩统计            ║\n" +
+            "║   record [on|off]      - 开启/关闭自动保存录像        ║\n" +
             "║   config               - 查看系统配置                ║\n" +
-            "║   help                 - 显示帮助                    ║\n" +
-            "║   hidehelp             - 隐藏帮助                    ║\n" +
-            "║   exit                 - 退出程序                    ║\n" +
+            "║   help                 - 显示帮助                     ║\n" +
+            "║   hidehelp             - 隐藏帮助                     ║\n" +
+            "║   exit                 - 退出程序                     ║\n" +
             "╚════════════════════════════════════════════════════════╝\n");
         showHelp = false;
     }
@@ -935,7 +941,7 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
             "╔════════════════════════════════════════════════════════╗\n" +
             "║                欢迎使用棋类对战平台                    ║\n" +
             "║                    版本 2.0.0                          ║\n" +
-            "║        支持五子棋、围棋、黑白棋对战                   ║\n" +
+            "║         支持五子棋、围棋、黑白棋对战                   ║\n" +
             "╚════════════════════════════════════════════════════════╝\n");
     }
     
