@@ -23,7 +23,7 @@ public class ValidationUtil {
     }
     
     public static boolean isValidStartCommand(String[] parts) {
-        if (parts.length != 3) return false;
+        // if (parts.length != 3) return false;
         try {
             String gameType = parts[1].toUpperCase();
             int size = Integer.parseInt(parts[2]);

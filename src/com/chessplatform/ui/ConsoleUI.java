@@ -2,25 +2,22 @@
 package com.chessplatform.ui;
 
 import com.chessplatform.command.*;
-import com.chessplatform.core.Game;
-import com.chessplatform.core.GameType;
-import com.chessplatform.core.Observer;
+import com.chessplatform.core.*;
 import com.chessplatform.games.GameFactory;
+import com.chessplatform.games.gomoku.Gomoku;
 import com.chessplatform.games.reversi.Reversi;
 import com.chessplatform.memento.GameCaretaker;
 import com.chessplatform.memento.GameMemento;
-import com.chessplatform.model.Board;
-import com.chessplatform.model.Move;
-import com.chessplatform.model.Piece;
-import com.chessplatform.model.Point;
+import com.chessplatform.model.*;
 import com.chessplatform.platform.ChessPlatformWithReplay;
 import com.chessplatform.recorder.GameRecorder;
 import com.chessplatform.recorder.ReplayController;
 import com.chessplatform.util.FileUtil;
 import com.chessplatform.util.ValidationUtil;
 import java.util.*;
+import javax.swing.SwingUtilities;
 
-public class ConsoleUI implements Observer {
+public class ConsoleUI implements com.chessplatform.core.Observer {
     private Game currentGame;
     private GameCaretaker caretaker;
     private boolean showHelp;
@@ -28,6 +25,9 @@ public class ConsoleUI implements Observer {
     private boolean running;
     private ChessPlatformWithReplay replayPlatform;  // 新增
     private boolean isReplayMode;
+    // 新增字段
+    private boolean waitingForAI;
+    private Thread aiThread;
     
     public ConsoleUI() {
         this.caretaker = new GameCaretaker();
@@ -36,6 +36,7 @@ public class ConsoleUI implements Observer {
         this.running = true;
         this.replayPlatform = new ChessPlatformWithReplay();
         this.isReplayMode = false;
+        this.waitingForAI = false;
     }
     
     public void start() {
@@ -77,6 +78,18 @@ public class ConsoleUI implements Observer {
         }
         
         switch (command) {
+            case "ai":
+                handleAICommand(parts);
+                break;
+            case "aimode":
+                handleAIModeCommand(parts);
+                break;
+            case "aistep":
+                handleAIStepCommand();
+                break;
+            case "aiauto":
+                handleAIAutoCommand(parts);
+                break;
             case "start":
                 handleStartCommand(parts);
                 break;
@@ -130,10 +143,13 @@ public class ConsoleUI implements Observer {
         }
     }
     
+    // 修改start方法，支持AI模式选择
     private void handleStartCommand(String[] parts) {
         if (!ValidationUtil.isValidStartCommand(parts)) {
-            System.out.println("用法: start [gomoku|go|reversi] [size]");
-            System.out.println("size: 棋盘大小(8-19)，黑白棋固定8×8");
+            System.out.println("用法: start [gomoku|go|reversi] [size] [mode] [blackAI] [whiteAI]");
+            System.out.println("mode: pvp(玩家对战), pva(人机对战), ava(AI对战)");
+            System.out.println("AI级别: none, random, rule, mcts");
+            System.out.println("示例: start gomoku 15 pva random none");
             return;
         }
         
@@ -141,27 +157,126 @@ public class ConsoleUI implements Observer {
             GameType gameType = GameType.fromString(parts[1]);
             int size = Integer.parseInt(parts[2]);
             
-            // 黑白棋特殊处理
-            if (gameType == GameType.REVERSI) {
-                size = 8;  // 强制设置为8×8
-                System.out.println("黑白棋固定使用8×8棋盘");
+            // 解析游戏模式和AI设置
+            GameMode gameMode = GameMode.PLAYER_VS_PLAYER;
+            AIType blackAI = AIType.NONE;
+            AIType whiteAI = AIType.NONE;
+            
+            if (parts.length > 3) {
+                gameMode = parseGameMode(parts[3]);
+                if (parts.length > 4) blackAI = AIType.fromString(parts[4]);
+                if (parts.length > 5) whiteAI = AIType.fromString(parts[5]);
             }
             
+            // 创建游戏
             currentGame = GameFactory.createGame(gameType, size);
+            
+            // 设置游戏模式
+            if (currentGame instanceof Gomoku) {
+                ((Gomoku) currentGame).setGameMode(gameMode, blackAI, whiteAI);
+            }
+            
+            // 开始游戏
             caretaker.clear();
-            
             System.out.println("开始新游戏: " + gameType.getChineseName() + 
-                            " " + size + "x" + size);
+                             " " + size + "x" + size);
+            System.out.println("游戏模式: " + gameMode.getDescription());
             
-            // 如果是黑白棋，显示初始提示
-            if (gameType == GameType.REVERSI) {
-                displayReversiHint();
+            if (blackAI != AIType.NONE) {
+                System.out.println("黑方AI: " + blackAI.getDescription());
+            }
+            if (whiteAI != AIType.NONE) {
+                System.out.println("白方AI: " + whiteAI.getDescription());
             }
             
             update(currentGame);
             
+            // 如果黑方是AI，自动开始思考
+            if (currentGame.isAIMove()) {
+                startAITurn();
+            }
+            
         } catch (IllegalArgumentException e) {
             System.out.println("错误: " + e.getMessage());
+        }
+    }
+    
+    private GameMode parseGameMode(String mode) {
+        switch (mode.toLowerCase()) {
+            case "pvp": return GameMode.PLAYER_VS_PLAYER;
+            case "pva": return GameMode.PLAYER_VS_AI;
+            case "ava": return GameMode.AI_VS_AI;
+            default: throw new IllegalArgumentException("无效的游戏模式: " + mode);
+        }
+    }
+    
+    // 新增：启动AI思考线程
+    private void startAITurn() {
+        if (currentGame == null || !currentGame.isAIMove() || waitingForAI) {
+            return;
+        }
+        
+        waitingForAI = true;
+        
+        aiThread = new Thread(() -> {
+            try {
+                System.out.println("\n🤖 " + currentGame.getCurrentPlayer().getName() + 
+                                 " 正在思考...");
+                
+                // 模拟AI思考时间
+                Thread.sleep(500);
+                
+                // 获取AI走棋
+                if (currentGame instanceof Gomoku) {
+                    Gomoku gomoku = (Gomoku) currentGame;
+                    Point aiMove = gomoku.getAIMove();
+                    
+                    if (aiMove != null) {
+                        // 在主线程执行走棋
+                        SwingUtilities.invokeLater(() -> {
+                            executeAIMove(aiMove.getX(), aiMove.getY());
+                        });
+                    }
+                }
+                
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                waitingForAI = false;
+            }
+        });
+        
+        aiThread.setDaemon(true);
+        aiThread.start();
+    }
+    
+    private void executeAIMove(int row, int col) {
+        if (currentGame == null) return;
+        
+        Command moveCommand = new MoveCommand(currentGame, caretaker, row, col);
+        if (moveCommand.execute()) {
+            System.out.println("🤖 AI落子于 (" + row + ", " + col + ")");
+            update(currentGame);
+            
+            // 检查是否游戏结束
+            if (currentGame.isGameOver()) {
+                System.out.println("\n🎯 游戏结束!");
+                if (currentGame.getWinner() != null) {
+                    System.out.println("🏆 获胜者: " + currentGame.getWinner().getName());
+                } else {
+                    System.out.println("🤝 平局!");
+                }
+            } else {
+                // 如果下一个玩家也是AI，继续思考
+                if (currentGame.isAIMove()) {
+                    try {
+                        Thread.sleep(500); // 给用户一点观察时间
+                        startAITurn();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
         }
     }
 
@@ -179,14 +294,12 @@ public class ConsoleUI implements Observer {
     @Override
     public void update(Game game) {
         displayBoard(game);
+        displayGameStatus(game);
         
-        if (isReplayMode) {
-            displayReplayInfo();
-        } else {
-            displayGameStatus(game);
+        // 如果是AI走棋，显示提示
+        if (game.isAIMove() && !waitingForAI) {
+            System.out.println("⏳ 等待AI思考...");
         }
-        
-        displayGameStatus();
     }
 
     // 显示黑白棋的合法落子位置
@@ -298,6 +411,9 @@ public class ConsoleUI implements Observer {
             if (moveCmd.execute()) {
                 System.out.println("落子成功: (" + row + ", " + col + ")");
                 update(currentGame);
+                if (currentGame.isAIMove()) {
+                    startAITurn();
+                }
             } else {
                 System.out.println("落子失败，位置不合法");
             }
@@ -457,6 +573,192 @@ public class ConsoleUI implements Observer {
         }
     }
     
+    private void handleAICommand(String[] parts) {
+        if (parts.length < 3) {
+            System.out.println("用法: ai [black|white] [none|random|rule|mcts]");
+            return;
+        }
+        
+        if (currentGame == null) {
+            System.out.println("请先开始游戏");
+            return;
+        }
+        
+        try {
+            String playerStr = parts[1];
+            String aiTypeStr = parts[2];
+            
+            Player player = playerStr.equalsIgnoreCase("black") ? 
+                currentGame.getCurrentPlayer() : // 这里需要根据具体游戏获取玩家
+                currentGame.getCurrentPlayer();  // 简化处理
+            
+            AIType aiType = AIType.fromString(aiTypeStr);
+            currentGame.setAITypeForPlayer(player, aiType);
+            
+            System.out.println(player.getName() + " AI类型设置为: " + aiType.getDescription());
+            
+        } catch (Exception e) {
+            System.out.println("设置AI失败: " + e.getMessage());
+        }
+    }
+    
+    private void handleAIModeCommand(String[] parts) {
+        if (parts.length < 2) {
+            System.out.println("用法: aimode [pvp|pva|ava]");
+            System.out.println("  pvp - 玩家对战");
+            System.out.println("  pva - 人机对战");
+            System.out.println("  ava - AI对战");
+            return;
+        }
+        
+        if (currentGame == null) {
+            System.out.println("请先开始游戏");
+            return;
+        }
+        
+        String mode = parts[1].toLowerCase();
+        GameMode gameMode;
+        
+        switch (mode) {
+            case "pvp":
+                gameMode = GameMode.PLAYER_VS_PLAYER;
+                System.out.println("已设置为玩家对战模式");
+                break;
+            case "pva":
+                gameMode = GameMode.PLAYER_VS_AI;
+                System.out.println("已设置为人机对战模式");
+                break;
+            case "ava":
+                gameMode = GameMode.AI_VS_AI;
+                System.out.println("已设置为AI对战模式");
+                break;
+            default:
+                System.out.println("无效的游戏模式，请使用: pvp, pva, ava");
+                return;
+        }
+        
+        // 设置游戏模式（需要游戏类支持）
+        try {
+            // 使用反射调用游戏类的setGameMode方法
+            java.lang.reflect.Method method = currentGame.getClass()
+                .getMethod("setGameMode", GameMode.class, AIType.class, AIType.class);
+            
+            // 获取当前AI设置
+            AIType blackAI = AIType.NONE;
+            AIType whiteAI = AIType.NONE;
+            
+            if (gameMode == GameMode.PLAYER_VS_AI) {
+                whiteAI = AIType.RANDOM; // 默认白方为随机AI
+            } else if (gameMode == GameMode.AI_VS_AI) {
+                blackAI = AIType.RANDOM;
+                whiteAI = AIType.RANDOM;
+            }
+            
+            method.invoke(currentGame, gameMode, blackAI, whiteAI);
+            
+            // 更新显示
+            update(currentGame);
+            
+            // 如果是AI模式，开始AI思考
+            if (currentGame.isAIMove()) {
+                System.out.println("AI开始思考...");
+                startAITurn();
+            }
+            
+        } catch (Exception e) {
+            System.out.println("设置游戏模式失败: " + e.getMessage());
+            System.out.println("此游戏可能不支持AI功能");
+        }
+    }
+
+    private void handleAIStepCommand() {
+        if (currentGame == null) {
+            System.out.println("请先开始游戏");
+            return;
+        }
+        
+        if (!currentGame.isAIMove()) {
+            System.out.println("当前不是AI回合");
+            return;
+        }
+        
+        System.out.println("执行AI走棋...");
+        
+        // 执行AI走棋
+        if (currentGame instanceof com.chessplatform.games.gomoku.Gomoku) {
+            com.chessplatform.games.gomoku.Gomoku gomoku = 
+                (com.chessplatform.games.gomoku.Gomoku) currentGame;
+            
+            com.chessplatform.model.Point aiMove = gomoku.getAIMove();
+            if (aiMove != null) {
+                System.out.println("AI选择落子于 (" + aiMove.getX() + ", " + aiMove.getY() + ")");
+                
+                // 执行落子命令
+                Command moveCommand = new MoveCommand(currentGame, caretaker, aiMove.getX(), aiMove.getY());
+                if (moveCommand.execute()) {
+                    update(currentGame);
+                    
+                    // 检查游戏是否结束
+                    if (currentGame.isGameOver()) {
+                        System.out.println("\n游戏结束!");
+                        if (currentGame.getWinner() != null) {
+                            System.out.println("获胜者: " + currentGame.getWinner().getName());
+                        } else {
+                            System.out.println("平局!");
+                        }
+                    }
+                }
+            } else {
+                System.out.println("AI选择放弃落子");
+            }
+        } else {
+            System.out.println("此游戏类型暂不支持AI");
+        }
+    }
+
+    private void handleAIAutoCommand(String[] parts) {
+        if (currentGame == null) {
+            System.out.println("请先开始游戏");
+            return;
+        }
+        
+        final int delay = 1000; // 默认1秒延迟
+        
+        System.out.println("开始AI自动对战，延迟 " + delay + "ms...");
+        
+        // 在新线程中执行自动对战
+        new Thread(() -> {
+            try {
+                int stepCount = 0;
+                int maxSteps = 100; // 防止无限循环
+                
+                while (!currentGame.isGameOver() && stepCount < maxSteps) {
+                    if (currentGame.isAIMove()) {
+                        handleAIStepCommand();
+                        stepCount++;
+                    } else {
+                        // 等待玩家操作
+                        break;
+                    }
+                    
+                    Thread.sleep(delay);
+                }
+                
+                if (stepCount >= maxSteps) {
+                    System.out.println("达到最大步数限制，自动对战停止");
+                } else if (currentGame.isGameOver()) {
+                    System.out.println("自动对战结束，游戏已结束");
+                } else {
+                    System.out.println("自动对战暂停，等待玩家操作");
+                }
+                
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                System.out.println("自动对战被中断");
+            }
+        }).start();
+    }
+
     private void displayGameStatus() {
         if (currentGame == null) {
             System.out.println("没有进行中的游戏");
@@ -522,9 +824,23 @@ public class ConsoleUI implements Observer {
             "║                    可用命令列表                        ║\n" +
             "╠════════════════════════════════════════════════════════╣\n" +
             "║ 游戏控制:                                              ║\n" +
-            "║   start [gomoku|go|reversi] [size] - 开始新游戏        ║\n" +
+            "║   start [game] [size] [mode] [blackAI] [whiteAI]       ║\n" +
+            "║     game: gomoku, go, reversi                          ║\n" +
+            "║     mode: pvp(玩家对战), pva(人机对战), ava(AI对战)   ║\n" +
+            "║     AI: none, random, rule, mcts                       ║\n" +
+            "║   示例: start gomoku 15 pva random none                ║\n" +
             "║   restart              - 重新开始当前游戏              ║\n" +
             "║   exit                 - 退出程序                      ║\n" +
+            "║                                                        ║\n" +
+            "║ AI对战控制:                                            ║\n" +
+            "║   ai [player] [type]   - 设置玩家AI类型               ║\n" +
+            "║     player: black, white                               ║\n" +
+            "║     type: none, random, rule, mcts                     ║\n" +
+            "║   示例: ai black rule    # 设置黑方为规则AI           ║\n" +
+            "║   aimode [mode]        - 设置游戏模式                 ║\n" +
+            "║     mode: pvp, pva, ava                               ║\n" +
+            "║   aistep               - AI走下一步                   ║\n" +
+            "║   aiauto [delay]       - AI自动对战                  ║\n" +
             "║                                                        ║\n" +
             "║ 游戏操作:                                              ║\n" +
             "║   move [row] [col]     - 在指定位置落子                ║\n" +
@@ -551,6 +867,7 @@ public class ConsoleUI implements Observer {
             "║   hidehelp             - 隐藏帮助                      ║\n" +
             "║   status               - 显示游戏状态                  ║\n" +
             "╚════════════════════════════════════════════════════════╝\n");
+        showHelp = false;
     }
     
     private void displayWelcome() {

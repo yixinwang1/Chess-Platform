@@ -1,12 +1,14 @@
 // 修改 core/Game.java
 package com.chessplatform.core;
 
-import com.chessplatform.model.Board;
-import com.chessplatform.model.Player;
 import com.chessplatform.memento.GameMemento;
-import com.chessplatform.recorder.GameRecorder;  // 新增导入
-
+import com.chessplatform.model.Board;
+import com.chessplatform.model.PieceColor;
+import com.chessplatform.model.Player;  // 新增导入
+import com.chessplatform.model.Point;
+import com.chessplatform.recorder.GameRecorder;
 import java.io.Serializable;
+import java.util.List;
 
 public interface Game extends Serializable {
     // 游戏操作
@@ -43,4 +45,18 @@ public interface Game extends Serializable {
     void setReplayMode(boolean replayMode);
     void setReplayStep(int step);
     Board getBoardAtStep(int step);
+    
+    // 新增AI相关方法
+    boolean isAIMove();  // 当前是否为AI走棋
+    void setAITypeForPlayer(Player player, AIType aiType);
+    AIType getAITypeForPlayer(Player player);
+    
+    // 新增游戏复制方法（用于AI模拟）
+    Game copy();
+    
+    // 新增获取合法位置方法
+    List<Point> getValidMoves();
+    
+    // 新增玩家颜色获取
+    PieceColor getPlayerColor(Player player);
 }

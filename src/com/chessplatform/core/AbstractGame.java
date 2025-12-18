@@ -1,13 +1,8 @@
-// 新增 games/AbstractGame.java（可选）
+// 新增 games/AbstractGame.java
 package com.chessplatform.core;
 
-import com.chessplatform.core.Game;
-import com.chessplatform.core.GameType;
-import com.chessplatform.core.ReplayMode;
 import com.chessplatform.model.*;
-import com.chessplatform.memento.GameMemento;
 import com.chessplatform.recorder.GameRecorder;
-
 import java.io.Serializable;
 
 public abstract class AbstractGame implements Game, Serializable {

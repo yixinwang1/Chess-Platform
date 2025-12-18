@@ -1,13 +1,19 @@
 // games/gomoku/Gomoku.java
 package com.chessplatform.games.gomoku;
 
+import com.chessplatform.ai.*;
+import com.chessplatform.ai.mcts.*;
+import com.chessplatform.ai.random.*;
+import com.chessplatform.ai.rules.*;
+import com.chessplatform.core.AIType;
 import com.chessplatform.core.Game;
+import com.chessplatform.core.GameMode;
 import com.chessplatform.core.GameType;
 import com.chessplatform.core.ReplayMode;
 import com.chessplatform.memento.GameMemento;
 import com.chessplatform.model.*;
 import com.chessplatform.recorder.GameRecorder;
-import java.io.Serializable;
+import java.io.*;
 import java.util.*;
 
 public class Gomoku implements Game, Serializable {
@@ -26,6 +32,11 @@ public class Gomoku implements Game, Serializable {
     private GameRecorder gameRecorder;
     private ReplayMode replayMode;
     private int replayStep;
+    
+    // 新增AI相关字段
+    private GameMode gameMode;
+    private Map<Player, AIType> playerAITypes;
+    private Map<AIType, AI> aiInstances;
     
     public Gomoku(int boardSize) {
         this.board = new Board(boardSize);
@@ -46,6 +57,16 @@ public class Gomoku implements Game, Serializable {
         gameRecorder.recordInitialState(board, currentPlayer);
         gameRecorder.addAnnotation("五子棋游戏开始");
         gameRecorder.addAnnotation("棋盘大小: " + boardSize + "x" + boardSize);
+
+        // 新增AI相关初始化
+        this.gameMode = GameMode.PLAYER_VS_PLAYER;
+        this.playerAITypes = new HashMap<>();
+        this.playerAITypes.put(blackPlayer, AIType.NONE);
+        this.playerAITypes.put(whitePlayer, AIType.NONE);
+        
+        // 初始化AI实例
+        this.aiInstances = new HashMap<>();
+        initializeAIInstances();
     }
     
     @Override
@@ -56,6 +77,14 @@ public class Gomoku implements Game, Serializable {
         
         if (!isValidMove(row, col) || gameOver) {
             return false;
+        }
+
+        // 如果是AI走棋，忽略手动输入
+        if (isAIMove() && !isReplayMode()) {
+            System.out.println("当前是AI走棋，请等待AI思考...");
+            Point aiPoint = getAIMove();
+            row = aiPoint.getX();
+            col = aiPoint.getY();
         }
         
         // 落子
@@ -400,5 +429,111 @@ public class Gomoku implements Game, Serializable {
         }
         
         return validMoves;
+    }
+
+    private void initializeAIInstances() {
+        aiInstances.put(AIType.RANDOM, new RandomAI());
+        aiInstances.put(AIType.RULE, new GomokuRuleAI());
+        // 可以延迟加载高级AI
+    }
+    
+    // 新增：设置游戏模式
+    public void setGameMode(GameMode mode, AIType blackAI, AIType whiteAI) {
+        this.gameMode = mode;
+        this.playerAITypes.put(blackPlayer, blackAI);
+        this.playerAITypes.put(whitePlayer, whiteAI);
+        
+        // 记录到录像
+        if (gameRecorder != null) {
+            gameRecorder.addAnnotation("设置游戏模式: " + mode.getDescription());
+            if (blackAI != AIType.NONE) {
+                gameRecorder.addAnnotation("黑方AI: " + blackAI.getDescription());
+            }
+            if (whiteAI != AIType.NONE) {
+                gameRecorder.addAnnotation("白方AI: " + whiteAI.getDescription());
+            }
+        }
+    }
+    
+    @Override
+    public boolean isAIMove() {
+        AIType aiType = playerAITypes.get(currentPlayer);
+        return aiType != AIType.NONE;
+    }   
+    
+    @Override
+    public void setAITypeForPlayer(Player player, AIType aiType) {
+        playerAITypes.put(player, aiType);
+    
+        // 记录到录像
+        if (gameRecorder != null) {
+            gameRecorder.addAnnotation(player.getName() + " AI类型设置为: " + 
+                (aiType == null ? "无" : aiType.getDescription()));
+        }
+    }
+    
+    @Override
+    public AIType getAITypeForPlayer(Player player) {
+        return playerAITypes.get(player);
+    }
+    
+    @Override
+    public Game copy() {
+        // 实现深拷贝
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            oos.writeObject(this);
+            
+            ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
+            ObjectInputStream ois = new ObjectInputStream(bais);
+            return (Gomoku) ois.readObject();
+        } catch (Exception e) {
+            throw new RuntimeException("复制游戏状态失败", e);
+        }
+    }
+    
+    // 新增：AI自动走棋方法
+    public Point getAIMove() {
+        AIType aiType = playerAITypes.get(currentPlayer);
+        if (aiType == AIType.NONE) {
+            return null;
+        }
+        
+        AI ai = aiInstances.get(aiType);
+        if (ai == null) {
+            // 延迟加载AI
+            ai = createAI(aiType);
+            aiInstances.put(aiType, ai);
+        }
+        
+        // 设置思考时间限制
+        ai.setTimeLimit(2000); // 2秒
+        
+        // AI思考
+        return ai.think(this);
+    }
+    
+    private AI createAI(AIType aiType) {
+        switch (aiType) {
+            case RANDOM:
+                return new RandomAI();
+            case RULE:
+                return new GomokuRuleAI();
+            case MCTS:
+                return new MCTSAI();
+            default:
+                throw new IllegalArgumentException("不支持的AI类型: " + aiType);
+        }
+    }
+
+    @Override
+    public PieceColor getPlayerColor(Player player) {
+        if (player == blackPlayer) {
+            return PieceColor.BLACK;
+        } else if (player == whitePlayer) {
+            return PieceColor.WHITE;
+        }
+        return PieceColor.EMPTY;
     }
 }
