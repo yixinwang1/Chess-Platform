@@ -497,7 +497,7 @@ public class Go extends Subject implements Game, Serializable {
     public String getGameStatus() {
         if (gameOver) {
             if (winner != null) {
-                return "游戏结束! 获胜者: " + winner.getName();
+                return "游戏结束! 获胜者: " + winner.getColor() + "(" + winner.getName() + ")";
             } else {
                 return "游戏结束! 平局";
             }

@@ -1,10 +1,9 @@
 package com.chessplatform.record;
 
-import com.chessplatform.model.Move;
 import com.chessplatform.core.Game;
 import com.chessplatform.model.Board;
+import com.chessplatform.model.Move;
 import com.chessplatform.model.Player;
-
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -53,7 +52,7 @@ public class GameRecorder implements Serializable {
         if (game.isGameOver()) {
             Player winner = game.getWinner();
             if (winner != null) {
-                addAnnotation("游戏结束，获胜者: " + winner.getName());
+                addAnnotation("游戏结束，获胜者: " + winner.getColor() + "(" + winner.getName() + ")");
             } else {
                 addAnnotation("游戏结束，平局");
             }

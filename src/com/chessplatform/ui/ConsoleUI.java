@@ -229,8 +229,8 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
             
             // 设置玩家
             User currentUser = authService.getCurrentUser();
-            // System.out.print("请输入对手用户名(输入 'ai' 对战AI，'guest' 对战游客): ");
-            System.out.print("请输入对手用户名");
+            System.out.print("请输入对手用户名(输入 'ai' 对战AI，'guest' 对战游客): ");
+
             String opponentName = scanner.nextLine().trim();
             
             Player player1 = createPlayer(currentUser, PieceColor.BLACK);
@@ -336,7 +336,7 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
             if (currentGame.isGameOver()) {
                 System.out.println("\n🎯 游戏结束!");
                 if (currentGame.getWinner() != null) {
-                    System.out.println("🏆 获胜者: " + currentGame.getWinner().getName());
+                    System.out.println("🏆 获胜者: " + currentGame.getWinner().getColor() + "(" + currentGame.getWinner().getName() + ")");
                 } else {
                     System.out.println("🤝 平局!");
                 }
@@ -369,6 +369,11 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
     public void update(Game game) {
         displayBoard(game);
         displayGameStatus(game);
+        
+        // 如果是黑白棋，显示合法落子位置
+        if (game.getGameType() == GameType.REVERSI) {
+            displayValidMoves(game);
+        }
         
         // 如果是AI走棋，显示提示
         if (game.isAIMove() && !waitingForAI) {
@@ -505,8 +510,8 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
             return;
         }
         
-        if (currentGame.getGameType() != GameType.GO) {
-            System.out.println("只有围棋支持虚着(pass)");
+        if (currentGame.getGameType() != GameType.GO && currentGame.getGameType() != GameType.REVERSI) {
+            System.out.println("只有围棋和黑白棋支持虚着(pass)");
             return;
         }
         
@@ -776,7 +781,7 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
                     if (currentGame.isGameOver()) {
                         System.out.println("\n游戏结束!");
                         if (currentGame.getWinner() != null) {
-                            System.out.println("获胜者: " + currentGame.getWinner().getName());
+                            System.out.println("🏆 获胜者: " + currentGame.getWinner().getColor() + "(" + currentGame.getWinner().getName() + ")");
                         } else {
                             System.out.println("平局!");
                         }
@@ -888,7 +893,7 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
         } else if (currentGame == null) {
             System.out.print("平台> ");
         } else {
-            System.out.print(currentGame.getCurrentPlayer().getName() + "> ");
+            System.out.print(currentGame.getCurrentPlayer().getColor() + "(" + currentGame.getCurrentPlayer().getName() + ")" + "> ");
         }
     }
     
@@ -1179,7 +1184,7 @@ public class ConsoleUI implements com.chessplatform.core.Observer, GameEventList
             System.out.println("平局!");
             System.out.println("双方战绩已更新");
         } else if (event.getWinner() != null) {
-            System.out.println("获胜者: " + event.getWinner().getName());
+            System.out.println("🏆 获胜者: " + currentGame.getWinner().getColor() + "(" + currentGame.getWinner().getName() + ")");
             System.out.println("战绩已更新");
         }
         

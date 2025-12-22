@@ -75,14 +75,6 @@ public class Gomoku extends Subject implements Game, Serializable {
         if (!isValidMove(row, col) || gameOver) {
             return false;
         }
-
-        // 如果是AI走棋，忽略手动输入
-        if (isAIMove() && !isReplayMode()) {
-            System.out.println("当前是AI走棋，请等待AI思考...");
-            Point aiPoint = getAIMove();
-            row = aiPoint.getX();
-            col = aiPoint.getY();
-        }
         
         // 落子
         board.setPiece(row, col, new Piece(currentPlayer.getColor()));
@@ -282,7 +274,7 @@ public class Gomoku extends Subject implements Game, Serializable {
     public String getGameStatus() {
         if (gameOver) {
             if (winner != null) {
-                return "游戏结束! 获胜者: " + winner.getName();
+                return "游戏结束! 获胜者: " + winner.getColor() + "(" + winner.getName() + ")";
             } else {
                 return "游戏结束! 平局";
             }

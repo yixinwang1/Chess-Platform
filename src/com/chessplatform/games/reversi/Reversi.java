@@ -227,12 +227,6 @@ public class Reversi extends Subject implements Game, Serializable {
     }
     
     private void checkGameEnd() {
-        // 检查当前玩家是否有合法落子
-        if (!hasValidMoves()) {
-            // 当前玩家无合法落子，自动pass
-            pass();
-        }
-        
         // 检查双方是否都无合法落子
         boolean blackHasMove = playerHasMove(blackPlayer);
         boolean whiteHasMove = playerHasMove(whitePlayer);
@@ -365,7 +359,7 @@ public class Reversi extends Subject implements Game, Serializable {
     public String getGameStatus() {
         if (gameOver) {
             if (winner != null) {
-                return "游戏结束! 获胜者: " + winner.getName();
+                return "游戏结束! 获胜者: " + winner.getColor() + "(" + winner.getName() + ")";
             } else {
                 return "游戏结束! 平局";
             }

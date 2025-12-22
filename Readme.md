@@ -80,7 +80,7 @@ cd chess-platform
 javac -d ./bin ./src/com/chessplatform/**/*.java
 
 # 3. 运行程序
-java -cp ./bin com.chessplatform.ChessPlatform
+java -cp ./bin com.chessplatform.platform.ChessPlatform
 ```
 
 ### 配置文件

@@ -15,14 +15,14 @@ public class RandomAI extends AbstractAI {
     @Override
     public Point think(Game game) {
         List<Point> validMoves = getValidMoves(game);
-        System.out.println("随机AI获取到的合法落子数: " + (validMoves == null ? 0 : validMoves.size()));
         if (validMoves == null || validMoves.isEmpty()) {
             return null; // 无合法落子
         }
         
         // 随机选择一个合法位置
         int index = random.nextInt(validMoves.size());
-        System.out.println("index: " + index);
-        return validMoves.get(index);
+        Point point = validMoves.get(index);
+        System.out.println("!随机AI选择落子位置: " + point.getX() + ", " + point.getY());
+        return point;
     }
 }
